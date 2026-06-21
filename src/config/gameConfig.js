@@ -167,9 +167,18 @@ export const GAME_CONFIG = {
       illness: {
         label: '生病',
         weight: 20,
-        duration: [2, 4],
+        duration: [2, 5],
         statDecay: [1, 3],
-        stressGain: [5, 10],
+        statDecayChance: 0.35,
+        stressGain: [5, 12],
+        types: ['普通感冒', '喉咙发炎', '肌肉拉伤', '疲劳过度', '轻微发烧'],
+        typeEffects: {
+          '普通感冒': { fatigueRecover: 8, stressRecover: 3 },
+          '喉咙发炎': { affectedStats: ['vocal'], decayMultiplier: 1.5 },
+          '肌肉拉伤': { affectedStats: ['dance'], decayMultiplier: 2 },
+          '疲劳过度': { fatigueRecover: 12, stressRecover: 5 },
+          '轻微发烧': { fatigueRecover: 6, stressRecover: 2, stressGain: 5 },
+        },
         description: '一名练习生身体不适，需要休养。',
       },
       inspiration: {

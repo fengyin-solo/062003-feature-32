@@ -41,6 +41,8 @@ function createTrainee(name, index) {
     status: 'trainee',
     groupId: null,
     illnessDays: 0,
+    totalIllnessDays: 0,
+    illnessType: null,
     poachResist: randInt(40, 70),
     fans: 0,
     singlesReleased: 0,
@@ -156,8 +158,44 @@ export function processDay(state) {
 
     if (trainee.illnessDays > 0) {
       trainee.illnessDays--
-      trainee.fatigue = clamp(trainee.fatigue - 5, 0, 100)
-      logs.push({ day: state.day, text: `${trainee.name} 仍在休养中（剩余 ${trainee.illnessDays} 天）。` })
+
+      const typeEffects = CFG.events.types.illness.typeEffects?.[trainee.illnessType] || {}
+      const fatigueRecover = typeEffects.fatigueRecover ?? 8
+      const stressRecover = typeEffects.stressRecover ?? 3
+
+      trainee.fatigue = clamp(trainee.fatigue - fatigueRecover, 0, 100)
+      trainee.stress = clamp(trainee.stress - stressRecover, 0, 100)
+
+      if (trainee.illnessDays === 0) {
+        trainee.totalIllnessDays = 0
+        trainee.illnessType = null
+        logs.push({ day: state.day, text: `🎉 ${trainee.name} 已完全康复，可以恢复训练了！` })
+      } else {
+        const decayChance = CFG.events.types.illness.statDecayChance || 0.35
+        if (Math.random() < decayChance) {
+          let statKeys = CFG.stats.filter((s) => trainee.stats[s] > 10)
+          let decayMultiplier = 1
+
+          if (typeEffects.affectedStats && typeEffects.affectedStats.length > 0) {
+            const affected = typeEffects.affectedStats.filter((s) => trainee.stats[s] > 10)
+            if (affected.length > 0) {
+              statKeys = affected
+              decayMultiplier = typeEffects.decayMultiplier || 1.5
+            }
+          }
+
+          if (statKeys.length > 0) {
+            const decayStat = pickRandom(statKeys)
+            const baseDecay = randInt(1, 2)
+            const decayAmount = Math.max(1, Math.round(baseDecay * decayMultiplier))
+            trainee.stats[decayStat] = clamp(trainee.stats[decayStat] - decayAmount, 0, CFG.thresholds.statCap)
+            logs.push({
+              day: state.day,
+              text: `${trainee.name} 休养中，${CFG.statLabels[decayStat]}因缺乏练习下降了 ${decayAmount}。`,
+            })
+          }
+        }
+      }
       continue
     }
 
@@ -297,12 +335,17 @@ export function processDay(state) {
       })
       pendingEvent = null
     } else if (pendingEvent.type === 'illness') {
-      pendingEvent.target.illnessDays = pendingEvent.duration
-      pendingEvent.target.stress = clamp(
-        pendingEvent.target.stress + pendingEvent.stressGain,
-        0,
-        100
-      )
+      const targetTrainee = trainees.find((t) => t.id === pendingEvent.target.id)
+      if (targetTrainee) {
+        targetTrainee.illnessDays = pendingEvent.duration
+        targetTrainee.totalIllnessDays = pendingEvent.duration
+        targetTrainee.illnessType = pendingEvent.illnessType || '普通感冒'
+        targetTrainee.stress = clamp(
+          targetTrainee.stress + pendingEvent.stressGain,
+          0,
+          100
+        )
+      }
       logs.push({
         day: state.day,
         text: `【${pendingEvent.label}】${pendingEvent.target.name} 需要休养 ${pendingEvent.duration} 天。`,
@@ -358,6 +401,8 @@ function generateRandomEvent(trainees, day) {
     case 'illness':
       event.duration = randInt(picked.duration[0], picked.duration[1])
       event.stressGain = randInt(picked.stressGain[0], picked.stressGain[1])
+      event.statDecay = randInt(picked.statDecay[0], picked.statDecay[1])
+      event.illnessType = pickRandom(picked.types)
       break
     case 'inspiration':
       event.statBoost = randInt(picked.statBoost[0], picked.statBoost[1])
